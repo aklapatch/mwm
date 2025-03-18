@@ -3,7 +3,7 @@
 set main_target "main"
 set cd_dir "."
 set mwm_file mwmfile.tcl
-set verbose 0
+set g_verbose 0
 
 proc p_usage {} {
 	puts "$::argv0 usage:
@@ -46,7 +46,7 @@ for {set i 0} {$i < $argc} {incr i} {
 			set mwm_file [lindex $argv $i]
         }
         --verbose {
-            set verbose 1
+            set g_verbose 1
 		}
 		default { error "Unrecognized arg $arg!" }
     }
@@ -60,11 +60,12 @@ proc make_target {name outputs inputs command} {
     if {[dict exists $g_targets $name]} {
         error "$name is already a target!"
     }
-    set add_val {0 $outputs $inputs $command}
-    dict set g_targets $name $add_val
-    if {$verbose} {
-        puts "Adding target $name with these values $add_val"
+    set add_val [list 0 $outputs $inputs $command]
+    global g_verbose
+    if {$g_verbose} {
+        puts "Adding target $name with these values ($add_val)"
     }
+    dict set g_targets $name $add_val
 }
 
 if {[file isdirectory $cd_dir] == 0} {
@@ -99,27 +100,34 @@ proc update_target {t_name} {
     if {[dict exists $g_targets $t_name] == 0} {
         error "Target $t_name does not exist!"
     }
-    set t_info [dict get g_targets $t_name]
+    set t_info [dict get $g_targets $t_name]
+
+    global g_verbose
+    set inputs [lindex $t_info 2]
     set up_to_date 1
-    foreach input [lindex $t_info 2] {
+    foreach input $inputs {
         if {[file isfile $input]} {
-            if {[dict exists $g_f_lens]} {
+            if {[dict exists $g_f_lens $input]} {
                 set f_len [dict get $g_f_lens $input]
                 set f_size [file size $input]
                 if {[string compare $f_len $f_size] != 0} {
-                    if {$verbose} {
+                    if {$g_verbose} {
                         puts "$input is out of date old len=$f_len, new len=$f_size"
                     }
                     set up_to_date 0
                     break
                 }
+            } else {
+                # The file did not exist before.
+                set up_to_date 0
+                break
             }
         } elseif {[file isdirectory $input]} {
-            if {$verbose} {
+            if {$g_verbose} {
                 puts "\"$input\" is a folder, skipping"
             }
-        } elseif {[dict exists $g_targets $input} {
-            if {$verbose} {
+        } elseif {[dict exists $g_targets $input]} {
+            if {$g_verbose} {
                 puts "Updating \"$input\" for \"$t_name\""
             }
             update_target $input
@@ -127,9 +135,9 @@ proc update_target {t_name} {
             error "$input for target \"$t_name\" is not a file or a target!"
         }
     }
-    if {$up_to_date == 0} {
+    if {$up_to_date == 0 || [llength $inputs] == 0} {
         set command [lindex $t_info 3]
-        if {$verbose} {
+        if {$g_verbose} {
             puts "Running $command for $t_name"
         }
         # Assume the file is an output of the command.
@@ -145,18 +153,18 @@ proc update_target {t_name} {
                 error "Output \"$output\" does not exist after an update!"
             } elseif {[file isfile $output]} {
                 set new_sz [file size $output]
-                if {$verbose} {
+                if {$g_verbose} {
                     puts "Updating size for \"$output\" to $new_sz"
                 }
-                dict set $g_f_lens $output $new_sz
-            }
+                dict set g_f_lens $output $new_sz
+            } 
         }
     }
 }
 
 update_target $main_target
 
-if {$verbose} {
+if {$g_verbose} {
     puts "Updating $data_file with new lengths"
 }
 set data_f [open $data_file w]
