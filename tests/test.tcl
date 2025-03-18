@@ -14,6 +14,7 @@ set test_list [dict create  \
     "No target provided for --target" "--target" \
     "Target bad-target does not exist" "--target bad-target --file [file join $test_dir empty-mwmfile.tcl]" \
     "does not exist after an update" "--file [file join $test_dir bad-output-mwmfile.tcl]" \
+    "is not a file or a target" "--file [file join $test_dir bad-input.tcl]" \
 ]
 dict for {text args} $test_list {
     if {[catch {exec  $mwm {*}$args 2>@1} output] == 0} {

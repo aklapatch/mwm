@@ -164,11 +164,13 @@ proc update_target {t_name} {
 
 update_target $main_target
 
-if {$g_verbose} {
-    puts "Updating $data_file with new lengths"
+if {[dict size $g_f_lens] > 0} {
+    if {$g_verbose} {
+        puts "Updating $data_file with new lengths"
+    }
+    set data_f [open $data_file w]
+    dict for {f_name sz} $g_f_lens {
+        puts $data_f "$f_name\t$sz"
+    }
+    close $data_f
 }
-set data_f [open $data_file w]
-dict for {f_name sz} $g_f_lens {
-    puts $data_f "$f_name\t$sz"
-}
-close $data_f
