@@ -28,4 +28,15 @@ dict for {text args} $test_list {
     }
 }
 
+set ok_test_list [list \
+    "--file [file join $test_dir works-zero-input.tcl]" \
+]
+foreach args $ok_test_list {
+    if {[catch {exec  $mwm {*}$args 2>@1} output]} {
+        error "Test ($args) failed! output=(\n$output\n)"
+    } else {
+        puts "Test succeeded. ($args)"
+    }
+}
+
 puts "Yippee! All tests passed!"
