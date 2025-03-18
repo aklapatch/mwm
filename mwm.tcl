@@ -87,8 +87,8 @@ if {[file exists $data_file]} {
     while {[gets $data_f line] >= 0} {
         # TODO: Use a regex?
         set len_start [string last "\t" $line]
-        set len [string range $len_start+1 end]
-        set f_name [string range 0 $len_start-1]
+        set len [string range $line $len_start+1 end]
+        set f_name [string range $line 0 $len_start-1]
         dict set g_f_lens $f_name $len
     }
     close $data_f

@@ -3,7 +3,7 @@
 set test_dir [file normalize [info script]]
 set test_dir [file dirname $test_dir]
 set parent_dir [file dirname $test_dir]
-cd $parent_dir
+cd $test_dir
 set mwm [file join $parent_dir mwm.tcl]
 
 set test_list [dict create  \
@@ -30,8 +30,10 @@ dict for {text args} $test_list {
 
 set ok_test_list [list \
     "--file [file join $test_dir works-zero-input.tcl]" \
+    "--file [file join $test_dir works-one-io.tcl]" \
 ]
 foreach args $ok_test_list {
+    file delete -- [file join $test_dir .mwmdata.tsv]
     if {[catch {exec  $mwm {*}$args 2>@1} output]} {
         error "Test ($args) failed! output=(\n$output\n)"
     } else {
