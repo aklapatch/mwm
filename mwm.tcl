@@ -82,16 +82,46 @@ source $mwm_file
 set data_file .mwmdata.tsv
 set g_f_lens [dict create]
 if {[file exists $data_file]} {
-    # This should update g_f_lens
     set data_f [open $data_file r]
     while {[gets $data_f line] >= 0} {
-        # TODO: Use a regex?
-        set len_start [string last "\t" $line]
-        set len [string range $line $len_start+1 end]
-        set f_name [string range $line 0 $len_start-1]
-        dict set g_f_lens $f_name $len
+        set re_pat "^(.*)\t(\\d+) (\\d+)$"
+        puts $line
+        if {[regexp $re_pat $line full_match f_name f_len f_hash] == 0} {
+            error "Failed to parse data line! ($line)"
+        }
+        dict set g_f_lens $f_name [list $f_len $f_hash]
     }
     close $data_f
+    if {$g_verbose} {
+        puts "File cache:\n$g_f_lens"
+    }
+}
+
+proc hash_file {f_path} {
+    set read_sz 8
+    # The golden ratio, 64 bit.
+    set state 0x9e3779b97f4a7c13
+    if {[file size $f_path] == 0} {
+        return $state
+    }
+    set f_h [open $f_path rb]
+    while {1} {
+        set rd [read $f_h $read_sz]
+        foreach char [split $rd ""] {
+           set char_int [scan $char %c]
+           set state [expr $state + $char_int]
+        }
+        # Mixing function from https://jonkagstrom.com/mx3/mx3_rev2.html.
+        set state [expr $state ^ ($state >> 32)]
+        set state [expr $state * 0xe9846af9b1a615d]
+        set state [expr $state ^ ($state >> 32)]
+        set state [expr $state * 0xe9846af9b1a615d]
+        set state [expr $state ^ ($state >> 28)]
+        set state [expr $state & 0xffffffffffffffff]
+        if {[eof $f_h]} { break }
+    }
+    close $f_h
+    return $state
 }
 
 # TODO: Optimize for multithreading.
@@ -108,19 +138,26 @@ proc update_target {t_name} {
     foreach input $inputs {
         if {[file isfile $input]} {
             if {[dict exists $g_f_lens $input]} {
-                set f_len [dict get $g_f_lens $input]
+                set f_meta [dict get $g_f_lens $input]
+                set f_len [lindex $f_meta 0]
+                set f_hash [lindex $f_meta 1]
                 set f_size [file size $input]
                 if {[string compare $f_len $f_size] != 0} {
                     if {$g_verbose} {
                         puts "$input is out of date old len=$f_len, new len=$f_size"
                     }
                     set up_to_date 0
-                    break
+                }
+                set new_f_hash [hash_file $input]
+                if {[string compare $new_f_hash $f_hash] != 0} {
+                    if {$g_verbose} {
+                        puts "$input is out of date old hash=$f_hash, new hash=$new_f_hash"
+                    }
+                    set up_to_date 0
                 }
             } else {
                 # The file did not exist before.
                 set up_to_date 0
-                break
             }
         } elseif {[file isdirectory $input]} {
             if {$g_verbose} {
@@ -130,11 +167,19 @@ proc update_target {t_name} {
             if {$g_verbose} {
                 puts "Updating \"$input\" for \"$t_name\""
             }
-            update_target $input
+            set in_info [dict get $g_targets $input]
+            set in_up_to_date [lindex $in_info 0]
+            if {$in_up_to_date == 0} {
+                # Avoid checking input targets many times if they're already updated.
+                if {[update_target $input] > 0} {
+                    set up_to_date 0
+                }
+            }
         } else {
             error "$input for target \"$t_name\" is not a file or a target!"
         }
     }
+    set updated 0
     if {$up_to_date == 0 || [llength $inputs] == 0} {
         set command [lindex $t_info 3]
         if {$g_verbose} {
@@ -153,24 +198,52 @@ proc update_target {t_name} {
                 error "Output \"$output\" does not exist after an update!"
             } elseif {[file isfile $output]} {
                 set new_sz [file size $output]
-                if {$g_verbose} {
-                    puts "Updating size for \"$output\" to $new_sz"
+                set f_hash [hash_file $output]
+                if {[dict exists $g_f_lens $output]} {
+                    # Only say we updated if our outputs are different
+                    set old_vals [dict get $g_f_lens $output]
+                    set old_sz [lindex $old_vals 0]
+                    set old_hash [lindex $old_vals 1]
+                    if {[string compare $old_sz $new_sz] != 0} {
+                        if {$g_verbose} {
+                           puts "File $output changed size old=$old_sz new=$new_sz" 
+                        }
+                        set updated 1
+                    } elseif {[string compare $old_hash $f_hash] != 0} {
+                        if {$g_verbose} {
+                           puts "File $output changed hash old=$old_hash new=$f_hash" 
+                        }
+                        set updated 1
+                    }
                 }
-                dict set g_f_lens $output $new_sz
+                if {$g_verbose} {
+                    puts "Updating size for \"$output\" to $new_sz and hash to $f_hash"
+                }
+                dict set g_f_lens $output [list $new_sz $f_hash]
             } 
         }
     }
+    # Mark that we're up to date in the global list.
+    lset t_info 0 1
+    dict set g_targets $t_name $t_info
+    return $updated
 }
 
 update_target $main_target
 
 if {[dict size $g_f_lens] > 0} {
     if {$g_verbose} {
-        puts "Updating $data_file with new lengths"
+        puts "Updating $data_file with new lengths and hashes"
     }
     set data_f [open $data_file w]
-    dict for {f_name sz} $g_f_lens {
-        puts $data_f "$f_name\t$sz"
+    dict for {f_name data} $g_f_lens {
+        set f_len [lindex $data 0]
+        set f_hash [lindex $data 1]
+        set add_str "$f_name\t$f_len $f_hash"
+        if {$g_verbose} {
+            puts "Writing entry: \"($add_str)\""
+        }
+        puts $data_f $add_str
     }
     close $data_f
 }

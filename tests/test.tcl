@@ -41,4 +41,29 @@ foreach args $ok_test_list {
     }
 }
 
+# Do cache testing
+set cache_file [file join $test_dir .mwmdata.tsv]
+set cache_in_file [file join $test_dir cache-test-in.txt]
+file delete -- $cache_file $cache_in_file
+
+set args "--verbose --file [file join $test_dir cache-test.tcl]"
+puts [exec  $mwm {*}$args 2>@1]
+
+set out_f [file join $test_dir cache-test-out.txt]
+set out_h [open $out_f r]
+set old_val [read $out_h]
+close $out_h
+
+after 1100
+
+puts [exec  $mwm {*}$args 2>@1]
+
+set out_h [open $out_f r]
+set new_val [read $out_h]
+close $out_h
+
+if {[string compare $new_val $old_val] != 0} {
+    error "Error, file should not have re-built"
+}
+
 puts "Yippee! All tests passed!"
