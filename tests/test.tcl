@@ -67,4 +67,18 @@ if {[string compare $new_val $old_val] != 0} {
     error "Error, file should not have re-built"
 }
 
+after 1001
+
+file delete -- $cache_file
+# The file should change because we re-built without file data
+puts [exec  $mwm {*}$args 2>@1]
+set out_h [open $out_f r]
+set newer_val [read $out_h]
+close $out_h
+
+if {[string compare $new_val $newer_val] == 0} {
+    error "Error, file should have re-built"
+}
+
+
 puts "Yippee! All tests passed!"
