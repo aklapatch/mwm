@@ -131,6 +131,18 @@ proc hash_file {f_path} {
     return $state
 }
 
+# TODO: Switch to an algorithm that:
+# - Finds all the input files that feed into a target
+# - See if they're out of date
+# - Then build the right targets to update those files
+# This should be more of a loop, and less recursive.
+# This may help with multithreading too, but I'm unsure of that.
+# My cache test has a problem where one target updates an ouput, but that output does not change between
+# target runs. I need a way to detect when an output file changes to another target, but to not rebuild
+# if it stays the sam.e That may involve building the input target, then checking if the output file is different.
+# That sounds involved.
+# Another issue is that the target that makes the file always runs. That mans we cannot tell to update other targets by checking if this target updated or not.
+
 # TODO: Optimize for multithreading.
 proc update_target {t_name} {
     global g_targets
