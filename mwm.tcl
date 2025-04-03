@@ -78,20 +78,18 @@ if {[file isfile $mwm_file] == 0} {
 }
 source $mwm_file
 
-# This file holds the lengths for each file.
-set data_file .mwmdata.tsv
+# This file holds the data for each file we depend on.
+# .tcld mean TCL Dictionary
+set data_file .mwmdata.tcld
 set g_f_lens [dict create]
 if {[file exists $data_file]} {
     set data_f [open $data_file r]
-    while {[gets $data_f line] >= 0} {
-        set re_pat "^(.*)\t(\\d+) (\\d+)$"
-        puts $line
-        if {[regexp $re_pat $line full_match f_name f_len f_hash] == 0} {
-            error "Failed to parse data line! ($line)"
-        }
-        dict set g_f_lens $f_name [list $f_len $f_hash]
-    }
+    set f_text [read $data_f]
     close $data_f
+    if {$g_verbose} {
+        puts "Cache text:\n$f_text"
+    }
+    set g_f_lens [dict create {*}$f_text]
     if {$g_verbose} {
         puts "File cache:\n$g_f_lens"
     }
@@ -233,17 +231,10 @@ update_target $main_target
 
 if {[dict size $g_f_lens] > 0} {
     if {$g_verbose} {
-        puts "Updating $data_file with new lengths and hashes"
+        puts "Writing cache entries to $data_file: \"$g_f_lens\""
     }
     set data_f [open $data_file w]
-    dict for {f_name data} $g_f_lens {
-        set f_len [lindex $data 0]
-        set f_hash [lindex $data 1]
-        set add_str "$f_name\t$f_len $f_hash"
-        if {$g_verbose} {
-            puts "Writing entry: \"($add_str)\""
-        }
-        puts $data_f $add_str
-    }
+    # Because everything is a string, we can just dump this to a file.
+    puts $data_f $g_f_lens
     close $data_f
 }

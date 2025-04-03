@@ -5,6 +5,8 @@ set test_dir [file dirname $test_dir]
 set parent_dir [file dirname $test_dir]
 cd $test_dir
 set mwm [file join $parent_dir mwm.tcl]
+set cache_file [file join $test_dir .mwmdata.tcld]
+file delete -- $cache_file
 
 set test_list [dict create  \
     "No folder provided" "--cd" \
@@ -33,7 +35,7 @@ set ok_test_list [list \
     "--file [file join $test_dir works-one-io.tcl]" \
 ]
 foreach args $ok_test_list {
-    file delete -- [file join $test_dir .mwmdata.tsv]
+    file delete -- $cache_file
     if {[catch {exec  $mwm {*}$args 2>@1} output]} {
         error "Test ($args) failed! output=(\n$output\n)"
     } else {
@@ -42,7 +44,6 @@ foreach args $ok_test_list {
 }
 
 # Do cache testing
-set cache_file [file join $test_dir .mwmdata.tsv]
 set cache_in_file [file join $test_dir cache-test-in.txt]
 file delete -- $cache_file $cache_in_file
 
