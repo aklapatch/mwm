@@ -55,7 +55,7 @@ set out_h [open $out_f r]
 set old_val [read $out_h]
 close $out_h
 
-after 1100
+after 1001
 
 puts [exec  $mwm {*}$args 2>@1]
 

@@ -193,32 +193,8 @@ proc update_target {t_name} {
         global g_f_lens
         foreach output [lindex $t_info 1] {
             if {[file exists $output] == 0} {
-                error "Output \"$output\" does not exist after an update!"
-            } elseif {[file isfile $output]} {
-                set new_sz [file size $output]
-                set f_hash [hash_file $output]
-                if {[dict exists $g_f_lens $output]} {
-                    # Only say we updated if our outputs are different
-                    set old_vals [dict get $g_f_lens $output]
-                    set old_sz [lindex $old_vals 0]
-                    set old_hash [lindex $old_vals 1]
-                    if {[string compare $old_sz $new_sz] != 0} {
-                        if {$g_verbose} {
-                           puts "File $output changed size old=$old_sz new=$new_sz" 
-                        }
-                        set updated 1
-                    } elseif {[string compare $old_hash $f_hash] != 0} {
-                        if {$g_verbose} {
-                           puts "File $output changed hash old=$old_hash new=$f_hash" 
-                        }
-                        set updated 1
-                    }
-                }
-                if {$g_verbose} {
-                    puts "Updating size for \"$output\" to $new_sz and hash to $f_hash"
-                }
-                dict set g_f_lens $output [list $new_sz $f_hash]
-            } 
+                error "Output \"$output\" from target \"$t_name\" does not exist after an update!"
+            }
         }
     }
     # Mark that we're up to date in the global list.
