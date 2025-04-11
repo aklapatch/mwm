@@ -64,7 +64,7 @@ for {set i 0} {$i < $argc} {incr i} {
     }
 }
 
-# Store values in a {up-to-date inputs outputs} format
+# Store values in a {up-to-date updated inputs outputs command} format
 set g_targets [dict create]
 
 proc make_target {name outputs inputs command} {
@@ -72,7 +72,7 @@ proc make_target {name outputs inputs command} {
     if {[dict exists $g_targets $name]} {
         error "$name is already a target!"
     }
-    set add_val [list 0 $outputs $inputs $command]
+    set add_val [list 0 0 $outputs $inputs $command]
     global g_verbose
     if {$g_verbose} {
         puts "Adding target $name with these values ($add_val)"
@@ -90,6 +90,9 @@ if {[file isfile $mwm_file] == 0} {
 }
 source $mwm_file
 
+# Get all the targets we need to update values for (to add to the cache).
+set depended_targets [list]
+
 set g_f_lens [dict create]
 if {[file exists $g_data_file]} {
     set data_f [open $g_data_file r]
@@ -101,7 +104,6 @@ if {[file exists $g_data_file]} {
     }
 } else {
     puts "Data file $g_data_file is missing, skipping it"
-
 }
 
 proc hash_file {f_path} {
@@ -144,7 +146,7 @@ proc hash_file {f_path} {
 # Another issue is that the target that makes the file always runs. That mans we cannot tell to update other targets by checking if this target updated or not.
 
 # TODO: Optimize for multithreading.
-proc update_target {t_name} {
+proc update_target {t_name depth} {
     global g_targets
     if {[dict exists $g_targets $t_name] == 0} {
         error "Target $t_name does not exist!"
@@ -155,45 +157,34 @@ proc update_target {t_name} {
     set inputs [lindex $t_info 2]
     set up_to_date 1
     # TODO: removed redundant input checking, or at least issue a warning.
+    set input_f_lens [dict create]
     foreach input $inputs {
         if {[file isfile $input]} {
+            set f_new_size [file size $input]
+            set new_f_hash [hash_file $input]
             if {[dict exists $g_f_lens $input]} {
                 set f_meta [dict get $g_f_lens $input]
                 set f_len [lindex $f_meta 0]
                 set f_hash [lindex $f_meta 1]
-                set f_new_size [file size $input]
                 if {[string compare $f_len $f_new_size] != 0} {
                     if {$g_verbose} {
                         puts "$input is out of date old len=$f_len, new len=$f_size"
                     }
                     set up_to_date 0
-                    dict set $g_f_lens
                 }
-                set new_f_hash [hash_file $input]
                 if {[string compare $new_f_hash $f_hash] != 0} {
                     if {$g_verbose} {
                         puts "$input is out of date old hash=$f_hash, new hash=$new_f_hash"
                     }
                     set up_to_date 0
-                    break
                 }
-                # Update the data  while we're here.
-                # Do it before the command runs.
-                # If we do it after, then we may not detect some changes to the file.
-                if {$g_verbose} {
-                    puts "Adding len $f_len and hash $f_hash to data for \"$input\""
-                }
-                dict set g_f_lens $input [list $f_len $f_hash]
             } else {
+                # This is a new file.
                 set up_to_date 0
-                # The file is not in our data, put it in.
-                set f_len [file size $input]
-                set f_hash [hash_file $input]
-                if {$g_verbose} {
-                    puts "Adding len $f_len and hash $f_hash to data for \"$input\""
-                }
-                dict set g_f_lens $input [list $f_len $f_hash]
             }
+            # It's important that this only is written to the cache if the command succeeds.
+            # Otherwise, we will have a problem.
+            dict set g_f_lens $input [list $f_new_size $new_f_hash]
         } elseif {[file isdirectory $input]} {
             if {$g_verbose} {
                 puts "\"$input\" is a folder, skipping"
@@ -206,7 +197,13 @@ proc update_target {t_name} {
             set in_up_to_date [lindex $in_info 0]
             if {$in_up_to_date == 0} {
                 # Avoid checking input targets many times if they're already updated.
-                update_target $input
+                # Pass in the depth so the target can know it should update it's outputs in the cache.
+                update_target $input [expr $depth + 1]
+            }
+            set in_updated [lindex $in_info 1]
+            if {$in_updated} {
+                # Our target updated, we should too.
+                set up_to_date 0
             }
         } else {
             error "$input for target \"$t_name\" is not a file or a target!"
@@ -230,13 +227,15 @@ proc update_target {t_name} {
                 error "Output \"$output\" from target \"$t_name\" does not exist after an update!"
             }
         }
+        # Let other targets know we updated so they can update too.
+        lset t_info 1 1
     }
     lset t_info 0 1
     # Use the global targets to let every other target know we're up to date now.
     dict set g_targets $t_name $t_info
 }
 
-update_target $g_main_target
+update_target $g_main_target 0
 
 if {[dict size $g_f_lens] > 0} {
     if {$g_verbose} {
