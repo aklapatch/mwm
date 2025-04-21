@@ -15,12 +15,12 @@ set test_list [dict create  \
     "No file provided for --file" "--file" \
     "No target provided for --target" "--target" \
     "Target bad-target does not exist" "--target bad-target --file [file join $test_dir empty-mwmfile.tcl]" \
-    "does not exist after an update" "--file [file join $test_dir bad-output-mwmfile.tcl]" \
+    "does not exist after an update" "--file [file join $test_dir bad-output-mwmfile.tcl] --verbose" \
     "is not a file or a target" "--file [file join $test_dir bad-input.tcl]" \
 ]
 dict for {text args} $test_list {
     if {[catch {exec  $mwm {*}$args 2>@1} output] == 0} {
-        error "This test should have failed! $args output=$output"
+        error "This test should have failed! $args output=(\n$output\n)"
     } else {
         if {[string match "*$text*" $output] == 0} {
             error "Test failed! ($args) Failed to find \"$text\" in (\n$output\n)"

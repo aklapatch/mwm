@@ -154,7 +154,7 @@ proc update_target {t_name depth} {
     set t_info [dict get $g_targets $t_name]
 
     global g_verbose
-    set inputs [lindex $t_info 2]
+    set inputs [lindex $t_info 3]
     set up_to_date 1
     # TODO: removed redundant input checking, or at least issue a warning.
     set input_f_lens [dict create]
@@ -210,10 +210,12 @@ proc update_target {t_name depth} {
         }
     }
     if {$up_to_date == 0 || [llength $inputs] == 0} {
-        set command [lindex $t_info 3]
+        set command [lindex $t_info 4]
         if {$g_verbose} {
             puts "Running \"$command\" for target \"$t_name\""
         }
+        # Get the time in case this is a folder. We can tell if it's created by the mtime.
+        set start_time [clock seconds]
         # Assume the file is an output of the command.
         if {[llength [info procs $command]] == 1} {
             # Run this TCL proc
@@ -222,16 +224,51 @@ proc update_target {t_name depth} {
             exec >@stdout 2>@stderr {*}$command
         }
         global g_f_lens
-        foreach output [lindex $t_info 1] {
+        foreach output [lindex $t_info 2] {
             if {[file exists $output] == 0} {
                 error "Output \"$output\" from target \"$t_name\" does not exist after an update!"
+            } 
+            if {$depth > 1} {
+                # Only say we've updated if our outputs changed
+                if  {[file isfile $output]} { 
+                    set f_new_size [file size $input]
+                    set new_f_hash [hash_file $input]
+
+                    if {[dict exists $g_f_lens $output]} {
+                        set out_info [dict get $output]
+                        set f_sz [lindex $out_info 0]
+                        set f_hash [lindex $out_info 1]
+                        if {[string compare $f_sz $f_new_size] != 0} {
+                            if {$g_verbose} {
+                                puts "$output changed. old len=$f_sz, new len=$f_new_size"
+                            }
+                            # Let other targets know we updated so they can update too.
+                            lset t_info 1 1
+                        }
+                        if {[string compare $new_f_hash $f_hash] != 0} {
+                            if {$g_verbose} {
+                                puts "$output changed. old hash=$f_hash, new hash=$new_f_hash"
+                            }
+                            # Let other targets know we updated so they can update too.
+                            lset t_info 1 1
+                        }
+                    } else {
+                        # We were missing an entry, so we're definitely out of date.
+                        lset t_info 1 1
+                    }
+                    dict set $g_f_lens [list $f_new_size $new_f_hash]
+                } else if {[file isdirectory $output]} {
+                    set dir_time [file mtime $output]
+                    if {$dir_time >= $start_time} {
+                        # The folder was created, we are out of date.
+                        lset t_info 1 1 
+                    }
+                }
             }
         }
-        # Let other targets know we updated so they can update too.
-        lset t_info 1 1
     }
-    lset t_info 0 1
     # Use the global targets to let every other target know we're up to date now.
+    lset t_info 0 1
     dict set g_targets $t_name $t_info
 }
 
