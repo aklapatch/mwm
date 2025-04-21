@@ -200,9 +200,14 @@ proc update_target {t_name depth} {
                 # Pass in the depth so the target can know it should update it's outputs in the cache.
                 update_target $input [expr $depth + 1]
             }
+            # Get info again because it may have udpated.
+            set in_info [dict get $g_targets $input]
             set in_updated [lindex $in_info 1]
             if {$in_updated} {
                 # Our target updated, we should too.
+                if {$g_verbose} {
+                    puts "Target $input is out of date, rebuilding!"
+                }
                 set up_to_date 0
             }
         } else {
@@ -228,14 +233,14 @@ proc update_target {t_name depth} {
             if {[file exists $output] == 0} {
                 error "Output \"$output\" from target \"$t_name\" does not exist after an update!"
             } 
-            if {$depth > 1} {
+            if {$depth > 0} {
                 # Only say we've updated if our outputs changed
                 if  {[file isfile $output]} { 
-                    set f_new_size [file size $input]
-                    set new_f_hash [hash_file $input]
+                    set f_new_size [file size $output]
+                    set new_f_hash [hash_file $output]
 
                     if {[dict exists $g_f_lens $output]} {
-                        set out_info [dict get $output]
+                        set out_info [dict get $g_f_lens $output]
                         set f_sz [lindex $out_info 0]
                         set f_hash [lindex $out_info 1]
                         if {[string compare $f_sz $f_new_size] != 0} {
@@ -253,14 +258,20 @@ proc update_target {t_name depth} {
                             lset t_info 1 1
                         }
                     } else {
+                        if {$g_verbose} {
+                            puts "$output was not in cache, we're out of date."
+                        }
                         # We were missing an entry, so we're definitely out of date.
                         lset t_info 1 1
                     }
-                    dict set $g_f_lens [list $f_new_size $new_f_hash]
-                } else if {[file isdirectory $output]} {
+                    dict set g_f_lens $output [list $f_new_size $new_f_hash]
+                } elseif {[file isdirectory $output]} {
                     set dir_time [file mtime $output]
                     if {$dir_time >= $start_time} {
                         # The folder was created, we are out of date.
+                        if {$g_verbose} {
+                            puts "$output was there before, we're out of date."
+                        }
                         lset t_info 1 1 
                     }
                 }
@@ -269,6 +280,9 @@ proc update_target {t_name depth} {
     }
     # Use the global targets to let every other target know we're up to date now.
     lset t_info 0 1
+    if {$g_verbose} {
+        puts "Updating target data with $t_info"
+    }
     dict set g_targets $t_name $t_info
 }
 
